@@ -1,5 +1,8 @@
 #include <opencv\cv.h>
 #include <opencv\highgui.h>
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
 #include <cmath>
 #include<iostream>
 
@@ -27,14 +30,12 @@ void histrogram();
 Mat equalizeHistrogram(Mat inputImageMat);
 void histogramMatching();
 Mat showHistogramF(Mat inputImageMat);
+void laplacian();
+void discreateFourianTransform();
 
 
-int main(){
+void takeInput(){
 	int key = 1;
-	//histrogram();
-	histogramMatching();
-
-	/*
 	do{
 		cout<<endl<<"Choose from following : "<<endl<<endl;
 		cout<<"		1.Contrast Streching"<<endl;
@@ -48,7 +49,10 @@ int main(){
 		cout<<"		9.Errosion"<<endl;
 		cout<<"		10.Border Exratction"<<endl;
 		cout<<"		11.Noise removal"<<endl;
-		cout<<"		12.Exit"<<endl;
+		cout<<"		12.Histogram Equalization"<<endl;
+		cout<<"		13.Laplacian"<<endl;
+		cout<<"		14.Discreate Fourier transform"<<endl;
+		cout<<"		15.Exit"<<endl;
 		cin>>key;
 		switch (key)
 		{
@@ -85,13 +89,131 @@ int main(){
 		case 11:
 			noiseRemoval();
 			break;
+		case 12:
+			histrogram();
+			break;
+		case 13:
+			laplacian();
+			break;
+		case 14:
+			discreateFourianTransform();
+			break;
 		default:
 			break;
 		}
-	}while(key!=12);
-	*/
+	}while(key!=15);
+}
+
+int main(){
+
+	takeInput();
 
 	return 0;
+}
+
+void discreateFourianTransform(){
+	cout<<"Please Drag & drop your image.."<<endl;
+    String imagePath;
+    cin>>imagePath;
+    Mat I = imread(imagePath,0);
+
+	imshow("Input Image" , I   );
+	cvWaitKey(0);
+
+    Mat padded;                            //expand input image to optimal size
+    int m = getOptimalDFTSize( I.rows );
+    int n = getOptimalDFTSize( I.cols ); // on the border add zero values
+    copyMakeBorder(I, padded, 0, m - I.rows, 0, n - I.cols, BORDER_CONSTANT, Scalar::all(0));
+
+    Mat planes[] = {Mat_<float>(padded), Mat::zeros(padded.size(), CV_32F)};
+    Mat complexI;
+    merge(planes, 2, complexI);         // Add to the expanded another plane with zeros
+
+    dft(complexI, complexI);            // this way the result may fit in the source matrix
+
+    // compute the magnitude and switch to logarithmic scale
+    // => log(1 + sqrt(Re(DFT(I))^2 + Im(DFT(I))^2))
+    split(complexI, planes);                   // planes[0] = Re(DFT(I), planes[1] = Im(DFT(I))
+    magnitude(planes[0], planes[1], planes[0]);// planes[0] = magnitude
+    Mat magI = planes[0];
+
+    magI += Scalar::all(1);                    // switch to logarithmic scale
+    log(magI, magI);
+
+    // crop the spectrum, if it has an odd number of rows or columns
+    magI = magI(Rect(0, 0, magI.cols & -2, magI.rows & -2));
+
+    // rearrange the quadrants of Fourier image  so that the origin is at the image center
+    int cx = magI.cols/2;
+    int cy = magI.rows/2;
+
+    Mat q0(magI, Rect(0, 0, cx, cy));   // Top-Left - Create a ROI per quadrant
+    Mat q1(magI, Rect(cx, 0, cx, cy));  // Top-Right
+    Mat q2(magI, Rect(0, cy, cx, cy));  // Bottom-Left
+    Mat q3(magI, Rect(cx, cy, cx, cy)); // Bottom-Right
+
+    Mat tmp;                           // swap quadrants (Top-Left with Bottom-Right)
+    q0.copyTo(tmp);
+    q3.copyTo(q0);
+    tmp.copyTo(q3);
+
+    q1.copyTo(tmp);                    // swap quadrant (Top-Right with Bottom-Left)
+    q2.copyTo(q1);
+    tmp.copyTo(q2);
+
+    normalize(magI, magI, 0, 1, CV_MINMAX); // Transform the matrix with float values into a
+                                            // viewable image form (float between values 0 and 1).
+
+    imshow("spectrum magnitude", magI);
+    cvWaitKey();
+	cvDestroyAllWindows();
+	
+}
+
+void laplacian(){
+	cout<<"Please Drag & drop your image.."<<endl;
+	String imagePath;
+	cin>>imagePath;
+	Mat inputImageMat = imread(imagePath,0),dst,dst3,dst2;
+	//cvtColor(inputImageMat,inputImageMat,CV_RGB2GRAY);
+
+	imshow("Input",inputImageMat);
+	cvWaitKey(0);
+
+	float laplacianMatrix[9] = {-1,-1,-1,
+								-1,8,-1,
+								-1,-1,-1};
+	Mat kernel(3,3,CV_32F,laplacianMatrix);
+
+
+	filter2D(inputImageMat,dst,CV_32F,kernel,Point(-1,-1));
+
+	/*
+	imshow("filter2D",dst);
+	cvWaitKey(0);
+	*/
+	//dst = abs(dst);
+
+	imshow("filter2D",dst);
+	cvWaitKey(0);
+
+	normalize(dst,dst2,0,255,NORM_MINMAX,CV_8U);
+
+	imshow("Normalize",dst2);
+	cvWaitKey(0);
+
+	 
+
+
+	addWeighted(inputImageMat,0.5,dst2,0.5,0,dst3);
+	
+	normalize(dst3,dst3,0,255,NORM_MINMAX,CV_8U);
+
+	imshow("Final",dst3);
+	cvWaitKey(0);
+
+	cvDestroyAllWindows();
+	
 }
 
 void gaussianBlur(){
@@ -162,10 +284,12 @@ void contrastStreching(){
 	String imagePath;
 	cin>>imagePath;
 	Mat inputImageMat = imread(imagePath);
-	imshow("Input",inputImageMat);
-	cvWaitKey(0);
+	
 
 	cvtColor(inputImageMat,inputImageMat,CV_RGB2GRAY);
+
+	imshow("Input",inputImageMat);
+	cvWaitKey(0);
 
 	double s,r;
 	for(int y = 0;y<inputImageMat.rows;y++){
@@ -204,7 +328,7 @@ void gammaCorrection(){
 	cout<<"Please Drag & drop your image.."<<endl;
 	String imagePath;
 	cin>>imagePath;
-	Mat inputImageMat = imread(imagePath);
+	Mat inputImageMat = imread(imagePath,0);
 	imshow("Input",inputImageMat);
 	cvWaitKey(0);
 
@@ -212,7 +336,7 @@ void gammaCorrection(){
 
 	double s,r;
 	for(int y = 0;y<inputImageMat.rows;y++){
-		for(int x = 0 ; x<inputImageMat.cols*3 ; x++){
+		for(int x = 0 ; x<inputImageMat.cols ; x++){
 			s = inputImageMat.at<uchar>(y,x);
 			r = std::pow(s,gamma);
 			r/=(std::pow(255,gamma));
@@ -234,13 +358,13 @@ void negative(){
 	cout<<"Please Drag & drop your image.."<<endl;
 	String imagePath;
 	cin>>imagePath;
-	Mat inputImageMat = imread(imagePath);
+	Mat inputImageMat = imread(imagePath,0);
 	imshow("Input",inputImageMat);
 	cvWaitKey(0);
 
 	int s,r;
 	for(int y = 0;y<inputImageMat.rows;y++){
-		for(int x = 0 ; x<inputImageMat.cols*3 ; x++){
+		for(int x = 0 ; x<inputImageMat.cols ; x++){
 			s = inputImageMat.at<uchar>(y,x);
 			r = 255  - s;
 			inputImageMat.at<uchar>(y,x) = r;
@@ -766,16 +890,17 @@ Mat showHistogram(Mat inputImageMat){
 		}
 	}
 
-	cout<<mx<<endl;
+	//cout<<mx<<endl;
 	
 	for(int i = 0 ; i<256 ;i++){
 		normalizeFrequency[i] = ceil(((float)frequency[i]/mx)*300);
 	}
 	
-
+	/*
 	for(int i = 0;i<256;i++){
 		cout<<frequency[i]<<" ";
 	}
+	*/
 
 	Mat histrogramMat;
 	histrogramMat.create(300,256,CV_8UC1);
@@ -790,7 +915,6 @@ Mat showHistogram(Mat inputImageMat){
 	return histrogramMat;
 
 }
-
 
 Mat equalizeHistrogram(Mat inputImageMat){
 	int frequency[256] =  {0};
@@ -897,7 +1021,6 @@ Mat showHistogramF(Mat inputImageMat){
 	return histrogramMat;
 
 }
-
 
 void histogramMatching(){
 	cout<<"Please Drag & drop your image.."<<endl;
