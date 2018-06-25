@@ -32,9 +32,16 @@ void histogramMatching();
 Mat showHistogramF(Mat inputImageMat);
 void laplacian();
 void discreateFourianTransform();
+void thresholdExtend();
+void thresholdReturn(Mat &mat,Mat src,float miu,bool invert);
+void edgeDetectionByGradient();
 
 
 void takeInput(){
+
+	edgeDetectionByGradient();
+
+	/*
 	int key = 1;
 	do{
 		cout<<endl<<"Choose from following : "<<endl<<endl;
@@ -52,7 +59,8 @@ void takeInput(){
 		cout<<"		12.Histogram Equalization"<<endl;
 		cout<<"		13.Laplacian"<<endl;
 		cout<<"		14.Discreate Fourier transform"<<endl;
-		cout<<"		15.Exit"<<endl;
+		cout<<"		15.Threshold Extend"<<endl;
+		cout<<"		16.Exit"<<endl;
 		cin>>key;
 		switch (key)
 		{
@@ -98,10 +106,15 @@ void takeInput(){
 		case 14:
 			discreateFourianTransform();
 			break;
+		case 15:
+			thresholdExtend();
+			break;
 		default:
 			break;
 		}
-	}while(key!=15);
+	}while(key!=16);
+
+	*/
 }
 
 int main(){
@@ -109,6 +122,231 @@ int main(){
 	takeInput();
 
 	return 0;
+}
+
+void edgeDetectionByGradient(){
+	cout<<"Please Drag & drop your Image.."<<endl;
+	String imagePath;
+	cin>>imagePath;
+	Mat inputImageMat = imread(imagePath,0);
+	imshow("Input",inputImageMat);
+	cvWaitKey(0);
+
+
+	float sigma;
+	cout<<"Sigma = ";
+	cin>>sigma;
+
+	float threshold;
+	cout<<"Threshold = ";
+	cin>>threshold;
+
+	int maskSize;
+	maskSize = (int) sigma*5.0;
+	//cout<<maskSize;
+	if(maskSize%2 == 0)maskSize++;
+
+	Mat filterx,filtery,filterxNormal,filteryNormal;
+	filterx.create(maskSize,maskSize,CV_32FC1);
+	filtery.create(maskSize,maskSize,CV_32FC1);
+
+	float val;
+	float temp[11][11];
+	int s = maskSize/2;
+	for(int y = -s,y1 = 0;y <= s ;y++,y1++){
+		for(int x = -s,x1 = 0 ; x<= s ; x++,x1++){
+			val = (-y)*exp((-((y*y)+(x*x)))/(2*sigma*sigma));
+			filterx.at<float>(x1,y1) = val;
+		}
+	}
+
+	for(int y = -s,y1 = 0;y <= s ;y++,y1++){
+		for(int x = -s,x1 = 0 ; x<= s ; x++,x1++){
+			val = (-x)*exp((-((y*y)+(x*x)))/(2*sigma*sigma));
+			filtery.at<float>(x1,y1) = val;
+		}
+	}
+
+	/*
+	for(int y =0;y<s;y++){
+		for(int x = 0;x<s;x++){
+			val = filter.at<float>(y,x);
+			cout<<val<<" ";
+		}
+		cout<<endl;
+	}
+	*/
+
+	normalize(filterx, filterxNormal, 0, 1, CV_MINMAX);
+	normalize(filtery, filteryNormal, 0, 1, CV_MINMAX);
+
+	
+	imshow("Filter X",filterxNormal);
+
+	imshow("Filter Y",filteryNormal);
+	
+
+	Mat xGrad,yGrad;
+    Mat mulX;
+    Mat mulY;
+	Mat mag;
+	Mat xGradNormal,yGradNormal;
+
+	inputImageMat.convertTo(inputImageMat, CV_32F);
+	
+	
+	filter2D(inputImageMat,xGrad,CV_32F,filterx,Point(-1,-1));
+
+	normalize(xGrad, xGradNormal, 0, 1, CV_MINMAX);
+
+	imshow("Output 1",xGradNormal);
+	cvWaitKey(0);
+	
+
+	filter2D(inputImageMat,yGrad,CV_32F,filtery,Point(-1,-1));
+
+	normalize(yGrad, yGradNormal, 0, 1, CV_MINMAX);
+	
+	imshow("Output 2",yGradNormal);
+	cvWaitKey(0);
+	
+	
+	multiply(xGrad, xGrad, mulX);
+    multiply(yGrad, yGrad, mulY);
+    mag = mulX + mulY;
+    cv::sqrt(mag, mag);
+
+	Mat magNormal;
+	/*
+	Mat phaseValue;
+	cv::divide(yGrad,xGrad,phaseValue);
+	cv:(phaseValue);
+
+	normalize(phaseValue, phaseValue, 0, 1, CV_MINMAX);
+
+	
+
+	imshow("Phase ",phaseValue);
+	cvWaitKey(0);
+	*/
+
+	normalize(mag, magNormal, 0, 1, CV_MINMAX);
+
+	normalize(mag, mag, 0, 255, CV_MINMAX);
+
+	imshow("Magnitude ",magNormal);
+	cvWaitKey(0);
+
+	/*
+	for(int y =0;y<mag.rows;y++){
+		for(int x = 0;x<mag.cols;x++){
+			val = mag.at<float>(y,x);
+			cout<<val<<" ";
+		}
+		cout<<endl;
+	}
+	*/
+	mag.convertTo(mag, CV_8UC1);
+	
+	float tmp;
+	for(int y = 0;y<mag.rows;y++){
+		for(int x = 0;x<mag.cols;x++){
+			tmp = mag.at<uchar>(y,x);
+			if(tmp<threshold){
+				mag.at<uchar>(y,x) = 0;
+			}else{
+				mag.at<uchar>(y,x) = 255;
+			}
+		}
+	}
+
+	imshow("Final ",mag);
+	cvWaitKey(0);
+
+	
+	cvDestroyAllWindows();
+
+}
+
+void thresholdReturn(Mat &mat,Mat src,float miu,bool invert){
+	int max=255,min=0;
+	if(invert){
+		max = 0;
+		min = 255;
+	}
+	int s,r;
+	for(int y = 0;y<src.rows;y++){
+		for(int x = 0 ; x<src.cols ; x++){
+			s = src.at<uchar>(y,x);
+			if(s <= miu && s >=0){
+				r = min;
+			}else{
+				r = max;
+			}
+			mat.at<uchar>(y,x) = r;
+		}
+	}
+}
+
+void thresholdExtend(){
+	cout<<"Please Drag & drop your image.."<<endl;
+    String imagePath;
+    cin>>imagePath;
+
+
+	float Tp=100000,Tc=0,val,miu1,miu2;
+	cout<<"enter cut-up value : ";
+	cin>>val;
+
+    Mat I = imread(imagePath,0);
+	Mat mask = I.clone();
+	mask.setTo(255);
+	Scalar meanSc;
+
+	imshow("Input Image" , I );
+	cvWaitKey(0);
+	
+	meanStdDev(I,meanSc,mask);
+	Tc = meanSc[0];
+
+	cout<<Tc<<endl;
+	
+	/*
+	mask = I.clone();
+	thresholdReturn(mask,I,Tc,false);
+	imshow("mask" , mask );
+	cvWaitKey(0);
+	*/
+	//meanStdDev(I,meanSc,mask);
+	//miu1 = meanSc[0];
+	//cout<<miu1<<endl;
+	
+	
+	while(abs(Tp-Tc)>val){
+		Tp = Tc;
+		mask = I.clone();
+		thresholdReturn(mask,I,Tp,false);
+		meanStdDev(I,mask,meanSc,mask);
+		miu1 = meanSc[0];
+
+		mask = I.clone();
+		thresholdReturn(mask,I,Tp,true);
+		meanStdDev(I,meanSc,mask);
+		miu2 = meanSc[0];
+		
+		Tc = (miu1+miu2)/2;
+
+		cout<<Tc<<endl;
+	}
+
+	
+
+	thresholdReturn(I,I,Tc,false);
+
+	imshow("Output Image" , I );
+	cvWaitKey(0);
+
+	cvDestroyAllWindows();
 }
 
 void discreateFourianTransform(){
@@ -124,9 +362,13 @@ void discreateFourianTransform(){
     int m = getOptimalDFTSize( I.rows );
     int n = getOptimalDFTSize( I.cols ); // on the border add zero values
     copyMakeBorder(I, padded, 0, m - I.rows, 0, n - I.cols, BORDER_CONSTANT, Scalar::all(0));
+	
+	imshow("padded",padded);
+	cvWaitKey(0);
 
     Mat planes[] = {Mat_<float>(padded), Mat::zeros(padded.size(), CV_32F)};
     Mat complexI;
+
     merge(planes, 2, complexI);         // Add to the expanded another plane with zeros
 
     dft(complexI, complexI);            // this way the result may fit in the source matrix
@@ -166,6 +408,11 @@ void discreateFourianTransform(){
 
     imshow("spectrum magnitude", magI);
     cvWaitKey();
+
+	idft(magI,magI);
+	imshow("spectrum magnitude", magI);
+    cvWaitKey();
+
 	cvDestroyAllWindows();
 	
 }
